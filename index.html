@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Hide &amp; Seek 3D — Watch Them Learn</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0f16; --panel:rgba(20,26,38,.92); --panel2:#1b2434; --line:#26324a;
+    --txt:#e7eefc; --dim:#8da0c4; --accent:#5cc8ff; --good:#5cffae;
+    --bad:#ff6b8a; --hider:#5cffae; --seeker:#ff6b8a; --gold:#ffd76b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+  #c3d{position:fixed;inset:0;display:block}
+  /* overlay UI */
+  #topbar{position:fixed;top:0;left:0;right:330px;display:flex;align-items:center;gap:12px;
+    padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
+    backdrop-filter:blur(6px);flex-wrap:wrap;z-index:5}
+  #topbar h1{font-size:15px;margin:0;letter-spacing:.5px}
+  #topbar h1 b{color:var(--accent)}
+  .stat{font-size:12px;color:var(--dim)}
+  .stat b{color:var(--txt);font-size:14px}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    padding:6px 11px;border-radius:7px;cursor:pointer;font-size:12px;transition:.12s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.on{background:var(--accent);color:#04121c;border-color:var(--accent);font-weight:700}
+  .btn.play{border-color:var(--good);color:var(--good)}
+  .btn.play:hover{background:var(--good);color:#04121c}
+  #right{position:fixed;top:0;right:0;bottom:0;width:330px;background:var(--panel);
+    border-left:1px solid var(--line);backdrop-filter:blur(6px);overflow-y:auto;z-index:5}
+  .card{padding:11px 14px;border-bottom:1px solid var(--line)}
+  .card h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+  .row{display:flex;justify-content:space-between;font-size:12px;margin:3px 0}
+  .row span:last-child{color:var(--txt);font-weight:600}
+  .sep{width:1px;height:20px;background:var(--line)}
+  .grp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .legend{display:flex;gap:12px;font-size:11px;color:var(--dim);align-items:center}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}
+  #roster .bot{display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0;
+    padding:4px 6px;border-radius:6px;cursor:pointer}
+  #roster .bot:hover{background:var(--panel2)}
+  #roster .bot.sel{background:var(--panel2);outline:1px solid var(--accent)}
+  #roster .nm{flex:1;font-weight:600}
+  #roster .rec{color:var(--dim);font-variant-numeric:tabular-nums}
+  #roster .role{width:7px;height:7px;border-radius:50%}
+  #techlog{font-size:11px;line-height:1.5;max-height:120px;overflow-y:auto}
+  #techlog .t{color:var(--gold)} #techlog .r{color:var(--dim)}
+  .pill{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;
+    background:var(--panel2);border:1px solid var(--line);margin:2px 2px 0 0}
+  .hint{font-size:11px;color:var(--dim);line-height:1.45}
+  #toast{position:fixed;top:46%;left:calc(50% - 165px);transform:translateX(-50%);
+    font-size:30px;font-weight:800;letter-spacing:1px;padding:14px 26px;border-radius:14px;
+    background:rgba(8,12,20,.82);border:1px solid var(--line);z-index:9;display:none;
+    text-shadow:0 2px 12px #000}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:#0c0f16;z-index:20;text-align:center;padding:40px}
+  input[type=range]{width:84px;accent-color:var(--accent)}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11px}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<div id="topbar">
+  <h1>AI <b>Hide &amp; Seek</b> 3D</h1>
+  <div class="sep"></div>
+  <div class="grp">
+    <button class="btn" id="bPause">⏸</button>
+    <button class="btn on" id="b1">1×</button>
+    <button class="btn" id="b4">4×</button>
+    <button class="btn" id="bTurbo">⚡ Train</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button class="btn play" id="bJoinH">🙋 Play Hider</button>
+    <button class="btn play" id="bJoinS">🙋 Play Seeker</button>
+    <button class="btn" id="bLeave" style="display:none">✖ Leave</button>
+  </div>
+  <div class="sep"></div>
+  <div class="stat">Round <b id="sRound">0</b></div>
+  <div class="stat">Time <b id="sTime">30s</b></div>
+  <div class="stat">Alive <b id="sHiders">0</b></div>
+  <div class="sep"></div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--hider)"></i>Hider</span>
+    <span><i class="dot" style="background:var(--seeker)"></i>Seeker</span>
+  </div>
+</div>
+
+<div id="right">
+  <div class="card">
+    <h2>Roster — named bots (saved forever)</h2>
+    <div id="roster"></div>
+    <div class="grp" style="margin-top:8px">
+      <span class="hint" style="flex:1">Hiders</span>
+      <button class="btn" id="hMinus">−</button><b id="nHid">4</b><button class="btn" id="hPlus">+</button>
+    </div>
+    <div class="grp">
+      <span class="hint" style="flex:1">Seekers</span>
+      <button class="btn" id="sMinus">−</button><b id="nSee">2</b><button class="btn" id="sPlus">+</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Brain Inspector <span id="brainWho" style="color:var(--accent);text-transform:none;letter-spacing:0">(click a bot)</span></h2>
+    <div id="brainBody" class="hint">Click a bot in the roster or in the world to see what it has learned.</div>
+  </div>
+  <div class="card">
+    <h2>Learning</h2>
+    <div class="row"><span>Hider survival (last 30)</span><span id="mSurv">—</span></div>
+    <canvas id="chart" width="300" height="56" style="width:100%;height:56px;background:var(--panel2);border-radius:6px;margin-top:4px"></canvas>
+  </div>
+  <div class="card">
+    <h2>Discovered Techniques</h2>
+    <div id="techlog"><div class="r">No tactics discovered yet…</div></div>
+  </div>
+  <div class="card">
+    <div class="grp">
+      <button class="btn" id="bSave">💾 Save</button>
+      <button class="btn" id="bReset">🗑 Reset All</button>
+      <button class="btn" id="bNewMap">🗺 New Map</button>
+    </div>
+    <div class="hint" style="margin-top:8px"><b>Play (first-person):</b> <kbd>W</kbd>/<kbd>S</kbd> walk, <kbd>A</kbd>/<kbd>D</kbd> turn, <b>right-click</b> to lock mouse &amp; look around (right-click again to unlock) — you see only your own cone. Hider: survive the round &amp; use cover (push <span style="color:#b5793a">crates</span>, hide behind <span style="color:#3f7d5a">ramps</span>). Seeker: tag every hider. Each AI bot keeps its name &amp; record forever.</div>
+  </div>
+</div>
+
+<div id="xhair" style="position:fixed;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:2px solid rgba(255,255,255,.7);border-radius:50%;z-index:6;display:none;pointer-events:none"></div>
+<div id="warm" style="position:fixed;top:54px;left:calc(50% - 165px);transform:translateX(-50%);background:rgba(8,12,20,.88);border:1px solid var(--line);padding:8px 16px;border-radius:10px;z-index:8;display:none;font-size:13px;color:var(--gold);font-weight:600"></div>
+<div id="toast"></div>
+<div id="err"><div><h1 style="color:var(--bad)">3D engine didn't load</h1>
+  <p class="hint">Three.js loads from a CDN — you need to be online the first time.<br>
+  Reconnect and refresh, or open <b>AIHideAndSeek_2D_backup.html</b> for the offline 2D version.</p></div></div>
+
+<script>
+/* ============================================================
+   AI HIDE & SEEK 3D
+   Sim core (grid, 160° vision + LOS, per-bot Q-learning, reward
+   shaping, action-repeat) is renderer-agnostic so it also runs
+   headless. THREE rendering is guarded by has3D.
+   ============================================================ */
+const has3D = (typeof THREE !== 'undefined');
+
+/* ---------- world grid ---------- */
+const CELL=18, COLS=48, ROWS=30, W=COLS*CELL, H=ROWS*CELL, TAU=Math.PI*2;
+let grid=[];
+function genMap(){
+  grid=[];
+  for(let y=0;y<ROWS;y++){ grid[y]=[]; for(let x=0;x<COLS;x++)
+    grid[y][x]=(x===0||y===0||x===COLS-1||y===ROWS-1)?1:0; }
+  for(let i=0;i<16;i++){
+    const bw=2+((i*7)%5), bh=2+((i*11)%4);
+    const bx=3+((i*13+5)%(COLS-bw-6)), by=3+((i*17+3)%(ROWS-bh-6));
+    for(let y=by;y<by+bh;y++) for(let x=bx;x<bx+bw;x++){
+      if((x+y+i)%4===0 && bw>2 && bh>2) continue; grid[y][x]=1;
+    }
+  }
+  for(let k=0;k<6;k++){ const y=4+((k*23)%(ROWS-8));
+    for(let x=2;x<COLS-2;x++) if((x+k)%9!==0) grid[y][x]=0; }
+  genObstacles();
+}
+function isWallCell(cx,cy){ return cx<0||cy<0||cx>=COLS||cy>=ROWS||grid[cy][cx]===1; }
+function isWallPx(px,py){ return isWallCell(Math.floor(px/CELL),Math.floor(py/CELL)); }
+
+/* ---- obstacles: movable CRATES (block move+sight, pushable) & RAMPS (block sight, walkable cover) ---- */
+let crates=[], ramps=[]; const CR=CELL*0.5;
+function inCrate(px,py){ for(let i=0;i<crates.length;i++){ const c=crates[i];
+  if(Math.abs(px-c.x)<CR && Math.abs(py-c.y)<CR) return i; } return -1; }
+function inRamp(px,py){ for(let i=0;i<ramps.length;i++){ const r=ramps[i];
+  if(Math.abs(px-r.x)<CR && Math.abs(py-r.y)<CR) return i; } return -1; }
+function blockedMove(px,py){ return isWallPx(px,py) || inCrate(px,py)>=0; }
+function blockedSight(px,py){ return isWallPx(px,py) || inCrate(px,py)>=0 || inRamp(px,py)>=0; }
+function cellFreeForCrate(nx,ny,self){ if(isWallPx(nx,ny)) return false;
+  for(let j=0;j<crates.length;j++){ if(j===self)continue;
+    if(Math.abs(crates[j].x-nx)<CELL*0.9 && Math.abs(crates[j].y-ny)<CELL*0.9) return false; } return true; }
+function shoveCrate(i,dx,dy){ const c=crates[i],nx=c.x+dx,ny=c.y+dy;
+  if(cellFreeForCrate(nx,ny,i)){ c.x=nx; c.y=ny; return true; } return false; }
+function tryMove(ag,dx,dy,push){
+  const nx=ag.x+dx;
+  if(!blockedMove(nx,ag.y)) ag.x=nx;
+  else if(push){ const ci=inCrate(nx,ag.y); if(ci>=0 && shoveCrate(ci,dx,0)) ag.x=nx; }
+  const ny=ag.y+dy;
+  if(!blockedMove(ag.x,ny)) ag.y=ny;
+  else if(push){ const ci=inCrate(ag.x,ny); if(ci>=0 && shoveCrate(ci,0,dy)) ag.y=ny; }
+}
+function freeCell(){ for(let t=0;t<300;t++){
+    const x=(2+Math.floor(Math.random()*(COLS-4)))*CELL+CELL/2,
+          y=(2+Math.floor(Math.random()*(ROWS-4)))*CELL+CELL/2;
+    if(!isWallPx(x,y) && inCrate(x,y)<0 && inRamp(x,y)<0) return {x,y}; } return null; }
+function genObstacles(){ crates=[]; ramps=[];
+  for(let i=0;i<4;i++){ const c=freeCell(); if(c) crates.push({x:c.x,y:c.y}); }
+  for(let i=0;i<3;i++){ const c=freeCell(); if(c) ramps.push({x:c.x,y:c.y,rot:Math.floor(Math.random()*4)}); }
+}
+
+function freeSpawn(){
+  for(let t=0;t<800;t++){
+    const x=(2+Math.floor(Math.random()*(COLS-4)))*CELL+CELL/2;
+    const y=(2+Math.floor(Math.random()*(ROWS-4)))*CELL+CELL/2;
+    if(!blockedMove(x,y) && inRamp(x,y)<0) return {x,y};
+  }
+  return {x:W/2,y:H/2};
+}
+function hasLOS(ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,d=Math.hypot(dx,dy),steps=Math.ceil(d/(CELL*0.5));
+  for(let i=1;i<steps;i++){ const t=i/steps; if(blockedSight(ax+dx*t,ay+dy*t)) return false; }
+  return true;
+}
+
+/* ---------- helpers ---------- */
+const DIRS=[]; for(let i=0;i<8;i++){ const a=i*Math.PI/4; DIRS.push({x:Math.cos(a),y:Math.sin(a),a}); }
+function angDiff(a,b){ let d=(a-b)%TAU; if(d>Math.PI)d-=TAU; if(d<-Math.PI)d+=TAU; return d; }
+function turnToward(cur,target,rate){ const d=angDiff(target,cur); return Math.abs(d)<=rate?target:cur+Math.sign(d)*rate; }
+function bearingSector(dx,dy){ let a=Math.atan2(dy,dx); if(a<0)a+=TAU; return Math.floor((a+Math.PI/8)/(Math.PI/4))%8; }
+const ACT_EVERY=8, TURN_RATE=0.16;
+
+/* ---------- shared team brain (Q-learning, softmax/Boltzmann action choice) ----------
+   All hiders share ONE brain; all seekers share ANOTHER. They never mix.
+   Softmax sampling + a per-bot persona => same knowledge, but they DON'T all do the
+   identical move (two bots in the same spot pick differently). ---------- */
+class Brain{
+  constructor(nActions){ this.n=nActions; this.Q={}; this.alpha=0.5; this.gamma=0.97;
+    this.temp=11; this.tempMin=1.3; this.tempDecay=0.991; this.states=0; }  // cool FAST so trained = decisive (not drunk)
+  get(s){ if(!this.Q[s]){ this.Q[s]=new Array(this.n).fill(0); this.states++; } return this.Q[s]; }
+  act(s, persona){           // sample an action ~ softmax(Q/temp + persona): smart, but varied
+    const q=this.get(s); const T=Math.max(0.05,this.temp);
+    let mx=-1e9; for(const v of q) if(v>mx) mx=v;
+    let sum=0; const w=new Array(this.n);
+    for(let i=0;i<this.n;i++){ w[i]=Math.exp((q[i]-mx)/T + (persona?persona[i]:0)); sum+=w[i]; }
+    let r=Math.random()*sum;
+    for(let i=0;i<this.n;i++){ r-=w[i]; if(r<=0) return i; }
+    return this.n-1; }
+  bestAction(s){ const q=this.get(s); let b=0,bv=-1e9; for(let i=0;i<this.n;i++) if(q[i]>bv){bv=q[i];b=i;} return b; }
+  learn(s,a,r,s2,terminal){ const q=this.get(s); let t=r;
+    if(!terminal){ const q2=this.get(s2); t+=this.gamma*Math.max(...q2); }
+    q[a]+=this.alpha*(t-q[a]); }
+  decay(){ this.temp=Math.max(this.tempMin,this.temp*this.tempDecay); }
+  serialize(){ return {Q:this.Q,temp:this.temp,states:this.states}; }
+  load(o){ if(!o)return; this.Q=o.Q||{}; this.temp=o.temp??this.temp; this.states=o.states||Object.keys(this.Q).length; }
+}
+const sharedHB=new Brain(9), sharedSB=new Brain(10);   // the two team brains
+function makePersona(n){ const p=[]; for(let i=0;i<n;i++) p.push((Math.random()*2-1)*0.2); return p; } // gentle style, never enough to make a bot reliably bad
+
+/* ---------- constants ---------- */
+const SIGHT=140, HALF_FOV=80*Math.PI/180, CATCH=18, SPEED_H=2.2, SPEED_S=1.95; // hiders are NIMBLE (faster) so a spotted hider can break away & re-hide; seekers pathfind to corner them
+const HIDER_SIGHT=150;  // hiders have a 160° cone, mid-range — enough to spot a seeker and bolt in time
+
+/* ---------- named roster (persistent individuals) ---------- */
+const NAMES=['Pip','Bolt','Echo','Sunny','Pixel','Mango','Ziggy','Comet','Pebble','Waffle',
+'Nibbles','Sprout','Biscuit','Tango','Maple','Disco','Fizz','Goose','Pumpkin','Cricket',
+'Domino','Olive','Scout','Banjo','Clover','Pepper','Marble','Twix','Cocoa','Mochi','Bingo',
+'Rascal','Pickle','Noodle','Bubbles','Sparky','Doodle','Gizmo','Cinnamon','Wally'];
+let usedNames=new Set();
+function pickName(){
+  const free=NAMES.filter(n=>!usedNames.has(n));
+  const n = free.length? free[Math.floor(Math.random()*free.length)]
+                       : NAMES[Math.floor(Math.random()*NAMES.length)]+Math.floor(Math.random()*90+10);
+  usedNames.add(n); return n;
+}
+function makeRecord(role){
+  return { name:pickName(), role, brain: role==='hider'?sharedHB:sharedSB,   // share the team brain
+           persona: makePersona(role==='hider'?9:10),                        // ...but keep a personal style
+           games:0, wins:0, losses:0, catches:0 };
+}
+let rosterH=[], rosterS=[];   // persistent named bots
+function ensureRoster(){
+  while(rosterH.length<nHiders) rosterH.push(makeRecord('hider'));
+  while(rosterS.length<nSeekers) rosterS.push(makeRecord('seeker'));
+}
+
+/* ---------- agents (per round) ---------- */
+class Agent{
+  constructor(role,rec,human){
+    this.role=role; this.rec=rec||null; this.human=!!human;
+    this.name = human?'YOU':(rec?rec.name:'?');
+    const s=freeSpawn(); this.x=s.x; this.y=s.y;
+    this.facing=Math.random()*TAU; this.targetFacing=this.facing; this.alive=true;
+    this.decS=null; this.decA=0; this.accR=0; this.holdT=0; this.lastSeenAt=-999; this.lastSeenDir=0; this.lastSeenAng=this.facing;
+    this._mh=null;
+    this._dummy = human?new Brain(role==='hider'?9:10):null;
+  }
+  brain(){ return this.rec?this.rec.brain:this._dummy; }
+  aiMove(decA){  // snappy full-speed movement (max agility = smartest play); the seeker CONE is smoothed separately
+    if(decA>=8) return;                         // hider 'stay' / seeker scan: don't drive
+    const sp=this.role==='hider'?SPEED_H:SPEED_S;
+    tryMove(this, DIRS[decA].x*sp, DIRS[decA].y*sp, false); this._mh=DIRS[decA].a;
+  }
+  tank(fwd, turn, push){ // first-person controls for the human
+    if(turn) this.facing+=turn*0.055;
+    this.targetFacing=this.facing;
+    if(fwd){ const sp=(this.role==='hider'?SPEED_H:SPEED_S)*fwd;
+      tryMove(this, Math.cos(this.facing)*sp, Math.sin(this.facing)*sp, push); }
+  }
+}
+let hiders=[], seekers=[], nHiders=4, nSeekers=1;   // 4-vs-1 is the balanced default (~40% survive); add seekers for a harder hunt
+
+/* ---------- vision ---------- */
+function seekerSees(sk,px,py){
+  const dx=px-sk.x, dy=py-sk.y, d=Math.hypot(dx,dy);
+  if(d>SIGHT) return false;
+  if(Math.abs(angDiff(Math.atan2(dy,dx),sk.facing))>HALF_FOV) return false;
+  return hasLOS(sk.x,sk.y,px,py);
+}
+function anySeekerSees(px,py){ for(const sk of seekers) if(sk.alive && seekerSees(sk,px,py)) return sk; return null; }
+function hiderSees(h,px,py){   // hider's short-range 160° cone (sees seekers in the dark, not far)
+  const dx=px-h.x, dy=py-h.y, d=Math.hypot(dx,dy);
+  if(d>HIDER_SIGHT) return false;
+  if(Math.abs(angDiff(Math.atan2(dy,dx), h.facing))>HALF_FOV) return false;
+  return hasLOS(h.x,h.y,px,py);
+}
+function isExposed(h){   // out in the open with no cover adjacent = obvious hiding spot
+  const cx=Math.floor(h.x/CELL), cy=Math.floor(h.y/CELL);
+  for(let y=cy-1;y<=cy+1;y++) for(let x=cx-1;x<=cx+1;x++) if(isWallCell(x,y)) return false;
+  return true;
+}
+function nearestCoverSector(ag){
+  let best=null,bd=1e9; const cx=Math.floor(ag.x/CELL),cy=Math.floor(ag.y/CELL),R=6;
+  for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++) if(isWallCell(x,y)){
+    const wx=x*CELL+CELL/2, wy=y*CELL+CELL/2, d=Math.hypot(wx-ag.x,wy-ag.y);
+    if(d<bd){bd=d;best={dx:wx-ag.x,dy:wy-ag.y};}
+  }
+  if(!best) return {sector:0,close:0};
+  return {sector:bearingSector(best.dx,best.dy), close:bd<CELL*1.6?1:0};
+}
+function nearestSeeker(h){ let best=null,bd=1e9; for(const sk of seekers){ if(!sk.alive)continue;
+  const d=Math.hypot(sk.x-h.x,sk.y-h.y); if(d<bd){bd=d;best=sk;} } return {sk:best,d:bd}; }
+function nearestHider(sk){ let best=null,bd=1e9; for(const h of hiders){ if(!h.alive)continue;
+  const d=Math.hypot(h.x-sk.x,h.y-sk.y); if(d<bd){bd=d;best=h;} } return {h:best,d:bd}; }
+
+/* ---------- seeker spatial search memory: lets them SWEEP instead of wandering in circles ---------- */
+let searchMap=[];
+function markSearched(sk){ const cx=Math.floor(sk.x/CELL),cy=Math.floor(sk.y/CELL),R=2;  // glance covers a small area as it sweeps
+  for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++)
+    if(y>=0&&y<ROWS&&x>=0&&x<COLS) searchMap[y][x]=tick; }
+function searchDir(sk){ // sector pointing at the nearest longest-unsearched open cell (cached ~6 ticks)
+  if(sk._sdT!=null && tick-sk._sdT<6) return sk._sd;
+  const cx=Math.floor(sk.x/CELL),cy=Math.floor(sk.y/CELL),R=8; let best=null,bs=-1e9;
+  for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++){
+    if(x<1||y<1||x>=COLS-1||y>=ROWS-1||grid[y][x]===1) continue;
+    const score=(tick-searchMap[y][x]) - (Math.abs(x-cx)+Math.abs(y-cy))*12;
+    if(score>bs){ bs=score; best={x,y}; } }
+  sk._sd = best? bearingSector((best.x+0.5)*CELL-sk.x,(best.y+0.5)*CELL-sk.y) : 0;
+  sk._sdT=tick; return sk._sd; }
+
+/* ---------- state encoding ---------- */
+function hiderState(h){
+  const {sk,d}=nearestSeeker(h); const seen=anySeekerSees(h.x,h.y)?1:0;
+  let seekDir=0,facingMe=0,dB=2;
+  if(sk){ seekDir=bearingSector(sk.x-h.x,sk.y-h.y); dB=d<90?0:d<200?1:2;
+    facingMe=Math.abs(angDiff(Math.atan2(h.y-sk.y,h.x-sk.x),sk.facing))<HALF_FOV?1:0; }
+  const cov=nearestCoverSector(h);
+  return `${seen}|${seekDir}|${dB}|${facingMe}|${cov.sector}|${cov.close}`;
+}
+function seekerState(sk,t){
+  let target=null,td=1e9,nvis=0;
+  for(const h of hiders) if(h.alive && seekerSees(sk,h.x,h.y)){ nvis++;
+    const d=Math.hypot(h.x-sk.x,h.y-sk.y); if(d<td){td=d;target=h;} }
+  if(target){ sk.lastSeenDir=bearingSector(target.x-sk.x,target.y-sk.y); sk.lastSeenAng=Math.atan2(target.y-sk.y,target.x-sk.x); sk.lastSeenAt=t; }
+  const sees=target?1:0, since=t-sk.lastSeenAt, sinceB=since<2?0:since<40?1:2;
+  const ahead=blockedMove(sk.x+Math.cos(sk.facing)*CELL,sk.y+Math.sin(sk.facing)*CELL)?1:0;
+  const dB=target?(td<90?0:td<180?1:2):3;
+  const numVis=nvis>=2?2:nvis;                      // 0 / 1 / 2+   ("there are 2 — can I get both?")
+  const inRange=(target && td<CATCH*2.4)?1:0;        // a hider is within tagging reach
+  const nearWall=(target && nearestCoverSector(target).close)?1:0; // the target is hugging a wall
+  const sd=sees?0:searchDir(sk);                                   // when searching: which way is unexplored?
+  return `${sees}|${sk.lastSeenDir}|${sinceB}|${ahead}|${dB}|${numVis}|${inRange}|${nearWall}|${sd}`;
+}
+
+/* ============================================================
+   INSTINCTS — smart hand-coded hunting & hiding. This is what
+   makes them genuinely smart NOW; the learning layer rides on top.
+   ============================================================ */
+function stepGain(ag,a,sp){   // how far the agent would ACTUALLY move heading angle a (0 if walking into a wall)
+  let g=0; const nx=ag.x+Math.cos(a)*sp, ny=ag.y+Math.sin(a)*sp;
+  if(!blockedMove(nx,ag.y)) g+=Math.abs(Math.cos(a)*sp);
+  if(!blockedMove(ag.x,ny)) g+=Math.abs(Math.sin(a)*sp);
+  return g;
+}
+function applyStep(ag,a,sp){ tryMove(ag, Math.cos(a)*sp, Math.sin(a)*sp, false); }
+function moveToward(ag, tx, ty, sp){   // head for (tx,ty), sliding around walls; returns true if it really moved
+  const base=Math.atan2(ty-ag.y, tx-ag.x);
+  for(const off of [0,0.5,-0.5,1.0,-1.0,1.6,-1.6,2.3,-2.3,3.14]){
+    if(stepGain(ag, base+off, sp) > sp*0.5){ applyStep(ag, base+off, sp); ag._mh=base+off; ag.targetFacing=base+off; return true; } }
+  ag.targetFacing=base; return false;
+}
+function wander(ag, sp){   // never freeze: keep moving in SOME genuinely-open direction
+  if(ag._wt==null || tick>ag._wt || stepGain(ag,ag._wa,sp)<=sp*0.5){
+    let found=false; for(let k=0;k<10;k++){ const a=Math.random()*TAU; if(stepGain(ag,a,sp)>sp*0.5){ ag._wa=a; found=true; break; } }
+    ag._wt=tick+18; if(!found) return; }
+  applyStep(ag, ag._wa, sp); ag.targetFacing=ag._wa; ag._mh=ag._wa;
+}
+function go(ag, tx, ty, sp){ if(!moveToward(ag,tx,ty,sp)) wander(ag,sp); }   // move toward goal, or wander if stuck
+function nearestCover(ag){   // nearest OPEN cell sitting against a wall (good for breaking line-of-sight)
+  const cx=Math.floor(ag.x/CELL),cy=Math.floor(ag.y/CELL),R=7; let best=null,bd=1e9;
+  for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++){
+    if(x<1||y<1||x>=COLS-1||y>=ROWS-1||grid[y][x]===1) continue;
+    if(!(grid[y][x+1]===1||grid[y][x-1]===1||(grid[y+1]&&grid[y+1][x]===1)||(grid[y-1]&&grid[y-1][x]===1))) continue;
+    const wx=x*CELL+CELL/2, wy=y*CELL+CELL/2, d=Math.hypot(wx-ag.x,wy-ag.y);
+    if(d<bd){bd=d;best={x:wx,y:wy};}
+  }
+  return best;
+}
+/* ---------- pathfinding: route AROUND walls to a target (no more grinding) ---------- */
+function findPath(sx,sy,gx,gy){   // BFS over open cells; returns [[x,y]...] from start (excl) to goal, or null
+  if(sx===gx&&sy===gy) return [];
+  const prev=new Int32Array(COLS*ROWS).fill(-2);   // -2 unvisited, -1 start
+  const q=[sx+sy*COLS]; prev[sx+sy*COLS]=-1; let head=0;
+  while(head<q.length){
+    const c=q[head++], cx=c%COLS, cy=(c/COLS)|0;
+    if(cx===gx&&cy===gy){ const path=[]; let k=c;
+      while(prev[k]!==-1){ path.push([k%COLS,(k/COLS)|0]); k=prev[k]; } path.reverse(); return path; }
+    const nb=[[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]];
+    for(const [nx,ny] of nb){ if(nx<0||ny<0||nx>=COLS||ny>=ROWS||grid[ny][nx]===1) continue;
+      const nk=ny*COLS+nx; if(prev[nk]!==-2) continue; prev[nk]=c; q.push(nk); }
+  }
+  return null;
+}
+function pathStep(ag, tx, ty){   // angle toward the next waypoint of a cached shortest path
+  const sx=Math.floor(ag.x/CELL), sy=Math.floor(ag.y/CELL), gx=Math.floor(tx/CELL), gy=Math.floor(ty/CELL);
+  if(sx===gx&&sy===gy) return Math.atan2(ty-ag.y,tx-ag.x);
+  if(!ag._path || ag._pgx!==gx || ag._pgy!==gy || tick>ag._pT){
+    ag._path=findPath(sx,sy,gx,gy)||[]; ag._pgx=gx; ag._pgy=gy; ag._pT=tick+25; ag._pi=0; }
+  while(ag._path[ag._pi]){ const w=ag._path[ag._pi], wx=(w[0]+0.5)*CELL, wy=(w[1]+0.5)*CELL;
+    if(Math.hypot(wx-ag.x,wy-ag.y)<CELL*0.6){ ag._pi++; continue; }
+    return Math.atan2(wy-ag.y,wx-ag.x); }
+  return Math.atan2(ty-ag.y,tx-ag.x);
+}
+function searchTarget(sk){   // pick an unsearched cell to head for: stale, near-ish, in my lane, away from teammates
+  if(sk._stT!=null && tick-sk._stT<10 && sk._st && Math.hypot(sk._st.x-sk.x,sk._st.y-sk.y)>CELL*1.8) return sk._st;
+  const cx=Math.floor(sk.x/CELL),cy=Math.floor(sk.y/CELL),R=11, laneX=((sk._idx||0)+0.5)/Math.max(1,sk._n||1)*COLS;
+  let best=null,bs=-1e9;
+  for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++){
+    if(x<1||y<1||x>=COLS-1||y>=ROWS-1||grid[y][x]===1) continue;
+    let score=(tick-searchMap[y][x]) - (Math.abs(x-cx)+Math.abs(y-cy))*12 - Math.abs(x-laneX)*7;
+    for(const o of seekers){ if(o===sk||!o.alive)continue; score+=(Math.abs(x-o.x/CELL)+Math.abs(y-o.y/CELL))*2.5; }
+    if(score>bs){bs=score;best={x:(x+0.5)*CELL,y:(y+0.5)*CELL};}
+  }
+  sk._st=best||{x:sk.x,y:sk.y}; sk._stT=tick; return sk._st;
+}
+function seekerMove(sk, desired){   // shark mode: always swim forward at real speed, steering toward the goal
+  if(sk._hd==null) sk._hd=desired;
+  sk._hd=turnToward(sk._hd, desired, 0.28);
+  for(const off of [0,0.4,-0.4,0.9,-0.9,1.5,-1.5,2.2,-2.2,3.14]){
+    if(stepGain(sk, sk._hd+off, SPEED_S) > SPEED_S*0.5){ applyStep(sk, sk._hd+off, SPEED_S); sk._hd+=off; sk.targetFacing=sk._hd; sk._mh=sk._hd; return; } }
+  sk._hd=Math.random()*TAU; applyStep(sk, sk._hd, SPEED_S);   // fully boxed (rare): pick new heading & still try
+}
+function seekerThink(sk){   // chase (don't dogpile) -> investigate last-seen -> sweep, spread — ALWAYS moving
+  let prey=null,pd=1e9;     // a hider is "noticed" if in the cone OR right next to the seeker (sensed, ±2 tiles + LOS)
+  for(const h of hiders){ if(!h.alive) continue; const d=Math.hypot(h.x-sk.x,h.y-sk.y);
+    if(d<pd && (seekerSees(sk,h.x,h.y) || (d<CELL*2.4 && hasLOS(sk.x,sk.y,h.x,h.y)))){ pd=d; prey=h; } }
+  if(prey){
+    let yield_=false;
+    for(const o of seekers){ if(o===sk||!o.alive||o.human)continue;
+      if(seekerSees(o,prey.x,prey.y) && Math.hypot(o.x-prey.x,o.y-prey.y)<pd-CELL){ yield_=true; break; } }
+    if(!yield_){ sk._mem={x:prey.x,y:prey.y,t:tick};
+      seekerMove(sk, pd<CELL*1.6 ? Math.atan2(prey.y-sk.y,prey.x-sk.x) // point-blank: beeline pounce
+                                  : pathStep(sk,prey.x,prey.y));        // else: route around walls
+      return; }
+  }
+  if(sk._mem && tick-sk._mem.t<75){
+    if(Math.hypot(sk._mem.x-sk.x,sk._mem.y-sk.y)<CELL*1.2) sk._mem=null;
+    else { seekerMove(sk, pathStep(sk,sk._mem.x,sk._mem.y)); return; }
+  }
+  const st=searchTarget(sk); seekerMove(sk, pathStep(sk, st.x, st.y));   // pathfind to unsearched ground
+}
+function hiderGoto(h, tx, ty, sp){   // hiders navigate with pathfinding too
+  const a=pathStep(h,tx,ty);
+  if(stepGain(h,a,sp)>sp*0.5) applyStep(h,a,sp); else wander(h,sp);
+  h.targetFacing=a; h._mh=a;
+}
+function hiderThink(h){   // spot a seeker -> bolt to a hidden spot far from it; else tuck into cover and hold/scan
+  let threat=null, sd=1e9;
+  for(const sk of seekers){ if(!sk.alive)continue;
+    if(hiderSees(h,sk.x,sk.y) || seekerSees(sk,h.x,h.y)){ const d=Math.hypot(sk.x-h.x,sk.y-h.y); if(d<sd){sd=d;threat=sk;} } }
+  if(threat){
+    if(!h._flee || tick>h._fleeT || Math.hypot(h._flee.x-h.x,h._flee.y-h.y)<CELL*2){ h._flee=pickHideSpot(h, threat); h._fleeT=tick+45; }
+    hiderGoto(h, h._flee.x, h._flee.y, SPEED_H); h._goal=null; return;   // sprint to safety, routing around walls
+  }
+  h._flee=null;
+  if(h._goal){
+    if(Math.hypot(h._goal.x-h.x,h._goal.y-h.y)>CELL*1.2){ hiderGoto(h, h._goal.x, h._goal.y, SPEED_H*0.9); return; }
+    h._goal=null;   // arrived
+  }
+  if(isExposed(h)) h._goal=pickHideSpot(h, null);   // exposed: relocate to cover
+  else h.targetFacing += 0.025;                      // hidden & safe: hold and scan
+}
+function pickHideSpot(h, threat){   // a tucked-away spot, far from the threat (or nearest seeker), moderate distance off
+  let ref=threat,nd=1e9;
+  if(!ref) for(const sk of seekers){ if(!sk.alive)continue; const d=Math.hypot(sk.x-h.x,sk.y-h.y); if(d<nd){nd=d;ref=sk;} }
+  const nsk=ref;
+  let best=null,bs=-1e9;
+  for(let i=0;i<16;i++){
+    const cx=2+Math.floor(Math.random()*(COLS-4)), cy=2+Math.floor(Math.random()*(ROWS-4));
+    if(grid[cy][cx]===1) continue;
+    const px=cx*CELL+CELL/2, py=cy*CELL+CELL/2;
+    let wc=0; if(grid[cy][cx+1]===1)wc++; if(grid[cy][cx-1]===1)wc++; if(grid[cy+1]&&grid[cy+1][cx]===1)wc++; if(grid[cy-1]&&grid[cy-1][cx]===1)wc++;
+    if(wc===0) continue;   // never hide in the open — must have cover
+    const ds=nsk?Math.hypot(px-nsk.x,py-nsk.y):300, dh=Math.hypot(px-h.x,py-h.y);
+    const score=wc*80 + ds*0.5 - Math.abs(dh-130)*0.4;   // more walls = more tucked away, far from seeker, ~130px off
+    if(score>bs){bs=score;best={x:px,y:py};}
+  }
+  return best||{x:h.x+(Math.random()*80-40),y:h.y+(Math.random()*80-40)};
+}
+
+/* ---------- round logic ---------- */
+let round=0, tick=0, ROUND_LEN=1300; // ~22s rounds
+let survHistory=[], paused=false, humanRole=null;
+let techCounts={}, techDiscovered={}, techEvents={}, techLines=[];
+
+function startRound(){
+  ensureRoster();
+  searchMap=[]; for(let y=0;y<ROWS;y++) searchMap[y]=new Array(COLS).fill(0);  // fresh search memory each round
+  hiders=[]; seekers=[];
+  for(let i=0;i<nHiders;i++) hiders.push(new Agent('hider',rosterH[i]));
+  for(let i=0;i<nSeekers;i++) seekers.push(new Agent('seeker',rosterS[i]));
+  if(humanRole){ const a=new Agent(humanRole,null,true);
+    (humanRole==='hider'?hiders:seekers).push(a); human=a; }
+  seekers.forEach((sk,i)=>{ sk._idx=i; sk._n=seekers.length; });   // assign patrol lanes
+  tick=0; episodeFlags();
+  if(has3D) ensureAgentMeshes();
+}
+function episodeFlags(){
+  techEvents={ghost:0,juke:0,wallHug:0,flush:0,quickCatch:0,scatter:0};
+  for(const h of hiders){ h.seenEver=false; h.seenThenHidTick=-1; h.wallSeenTicks=0; h.seenTotal=0; }
+}
+function endRound(){
+  const survivors=hiders.filter(h=>h.alive).length, total=hiders.length||1;
+  for(const h of hiders){
+    if(h.alive && h.decS!=null) h.brain().learn(h.decS,h.decA,+25,null,true);
+    if(h.rec){ h.rec.games++; if(h.alive) h.rec.wins++; else h.rec.losses++; }
+    if(h.alive && !h.seenEver) techEvents.ghost++;
+    if(h.alive && h.seenThenHidTick>=0 && (tick-h.seenThenHidTick)<70) techEvents.juke++;
+    if(h.seenTotal>5 && h.wallSeenTicks/Math.max(1,h.seenTotal)>0.55) techEvents.wallHug++;
+  }
+  for(const sk of seekers){
+    if(survivors>0 && sk.decS!=null) sk.brain().learn(sk.decS,sk.decA,-20,null,true);
+    if(sk.rec){ sk.rec.games++; if(sk._caught>0) sk.rec.wins++; else sk.rec.losses++; }
+  }
+  registerTechs(survivors,total);
+  // only count AI hiders toward the survival curve
+  const aiHiders=hiders.filter(h=>!h.human); const aiSurv=aiHiders.filter(h=>h.alive).length;
+  if(aiHiders.length){ survHistory.push(aiSurv/aiHiders.length); if(survHistory.length>120) survHistory.shift(); }
+  sharedHB.decay(); sharedSB.decay();   // decay each TEAM brain once per round (not per bot)
+  round++; saveSoon();
+  if(human){ const survived = human.alive;
+    if(human.role==='hider') showToast(survived?'YOU SURVIVED! 🎉':'CAUGHT! 😵', survived?'#5cffae':'#ff6b8a');
+    else showToast((human._caught>0)?('TAGGED '+human._caught+'! 🎉'):'THEY ESCAPED 😤', (human._caught>0)?'#5cffae':'#ff6b8a');
+  }
+  startRound();
+}
+function registerTechs(surv,total){
+  const map={ ghost:['Ghost','A hider survived a whole round without ever being seen.'],
+    juke:['Last-Second Juke','A hider broke line-of-sight and escaped right after being spotted.'],
+    wallHug:['Wall Hugger','A hider stayed glued to cover whenever a seeker looked its way.'],
+    flush:['Flusher','A seeker chased a hider out of hiding and tagged it.'],
+    quickCatch:['Blitz Hunter','A seeker tagged a hider in the opening seconds.'],
+    scatter:['Scatter Split','Hiders bolted opposite ways as a seeker closed in.'] };
+  for(const k in techEvents) if(techEvents[k]>0){
+    techCounts[k]=(techCounts[k]||0)+techEvents[k];
+    if(!techDiscovered[k] && techCounts[k]>=3){ techDiscovered[k]=round;
+      techLines.unshift(`<div><span class="t">★ ${map[k][0]}</span> <span class="r">— round ${round}</span><br><span class="r">${map[k][1]}</span></div>`); }
+  }
+  renderTechSummary(map);
+}
+
+/* ---------- input (human) ---------- */
+let human=null; const keys={};
+const MOVEKEYS=new Set(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright']);
+window.addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); keys[k]=true; if(human && MOVEKEYS.has(k)) e.preventDefault(); });
+window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+function humanControl(ag){ // first-person tank: W/S forward-back along facing, A/D turn
+  let fwd=0,turn=0;
+  if(keys['w']||keys['arrowup'])fwd+=1; if(keys['s']||keys['arrowdown'])fwd-=1;
+  if(keys['a']||keys['arrowleft'])turn-=1; if(keys['d']||keys['arrowright'])turn+=1;
+  ag.tank(fwd,turn,true);  // the player can shove crates
+}
+
+/* ---------- one simulation tick ---------- */
+function step(){
+  tick++;
+  for(const h of hiders){
+    if(!h.alive) continue;
+    if(h.human){ humanControl(h);
+      if(anySeekerSees(h.x,h.y)) h.seenEver=true; continue; }
+    const s=hiderState(h); const B=h.brain();
+    if(h.holdT<=0){ if(h.decS!=null) B.learn(h.decS,h.decA,h.accR,s,false);
+      h.decA=B.act(s, h.rec?h.rec.persona:null); h.decS=s; h.accR=0; h.holdT=ACT_EVERY; }
+    hiderThink(h);   // INSTINCT: flee from a seen seeker, else tuck into cover and hold/scan
+    h.facing=turnToward(h.facing,h.targetFacing,TURN_RATE);   // hider looks where it moves / scans while hiding
+    const seenNow=anySeekerSees(h.x,h.y); let r=seenNow?-0.1:0.01;   // being seen is dangerous; NO reward for wall-camping
+    const cov=nearestCoverSector(h);
+    if(seenNow){ h.seenTotal++; if(cov.close)h.wallSeenTicks++; if(!h.seenEver)h.seenEver=true; h.seenThenHidTick=-1; }
+    else if(h.seenEver && h.seenThenHidTick<0) h.seenThenHidTick=tick;
+    h.accR+=r; h.holdT--;
+  }
+  for(const sk of seekers){
+    if(!sk.alive) continue; if(sk._caught===undefined) sk._caught=0;
+    if(sk.human){ if(sk._caught===undefined) sk._caught=0; humanControl(sk); doCatches(sk); continue; }
+    const s=seekerState(sk,tick); const B=sk.brain();
+    if(sk.holdT<=0){ if(sk.decS!=null) B.learn(sk.decS,sk.decA,sk.accR,s,false);
+      sk.decA=B.act(s, sk.rec?sk.rec.persona:null); sk.decS=s; sk.accR=0; sk.holdT=ACT_EVERY;
+      if(sk.decA===8) sk.targetFacing=sk.facing-1.2; else if(sk.decA===9) sk.targetFacing=sk.facing+1.2; }
+    seekerThink(sk);   // INSTINCT: chase what it sees, investigate last-seen spot, sweep unsearched ground
+    sk.facing=turnToward(sk.facing,sk.targetFacing,TURN_RATE);
+    let r=-0.02, saw=false;
+    for(const h of hiders) if(h.alive && seekerSees(sk,h.x,h.y)){ saw=true; break; }
+    if(saw) r+=0.1;
+    else { const cy=Math.floor(sk.y/CELL),cx=Math.floor(sk.x/CELL);
+      if(searchMap[cy] && tick-searchMap[cy][cx]>120) r+=0.05; }   // reward sweeping NEW ground while searching
+    markSearched(sk);
+    r += doCatches(sk);
+    sk.accR+=r; sk.holdT--;
+  }
+  if(hiders.filter(h=>h.alive).length>=2) for(const sk of seekers){ if(!sk.alive)continue;
+    const near=hiders.filter(h=>h.alive && Math.hypot(h.x-sk.x,h.y-sk.y)<160);
+    if(near.length>=2 && Math.hypot(near[0].x-near[1].x,near[0].y-near[1].y)>120 && tick%30===0) techEvents.scatter++;
+  }
+  if(hiders.every(h=>!h.alive) || tick>=ROUND_LEN) endRound();
+}
+function doCatches(sk){
+  let bonus=0;
+  for(const h of hiders){
+    if(!h.alive) continue;
+    if(Math.hypot(h.x-sk.x,h.y-sk.y)<CATCH){
+      h.alive=false; bonus+=40; if(sk._caught===undefined)sk._caught=0; sk._caught++;
+      if(sk.rec) sk.rec.catches++;
+      if(h.seenEver && h.seenThenHidTick>=0) techEvents.flush++;
+      if(tick<ROUND_LEN*0.18) techEvents.quickCatch++;
+      if(!h.human && h.decS!=null){ h.brain().learn(h.decS,h.decA,-100,null,true); h.decS=null; } // getting tagged HURTS
+    }
+  }
+  return bonus;
+}
+
+/* ============================================================
+   3D RENDER  (guarded by has3D)
+   ============================================================ */
+let scene,camera,fpCam,renderer,agentLayer,coneLayer,wallMesh,floorMesh;
+let crateMeshes=[], rampMeshes=[];
+function rampGeo(){ const g=new THREE.BufferGeometry(); const h=0.7,s=0.5;
+  const v=[ -s,0,-s, s,0,-s, s,h,s,  -s,0,-s, s,h,s, -s,h,s,        // slope
+            -s,0,s, s,0,s, s,h,s,  -s,0,s, s,h,s, -s,h,s,           // back wall
+            -s,0,-s,-s,0,s,s,0,s, -s,0,-s,s,0,s,s,0,-s,             // bottom
+            -s,0,-s,-s,h,s,-s,0,s,  s,0,-s,s,0,s,s,h,s ];           // sides
+  g.setAttribute('position',new THREE.Float32BufferAttribute(v,3)); g.computeVertexNormals(); return g; }
+function buildObstacles(){
+  for(const m of [...crateMeshes,...rampMeshes]){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  crateMeshes=[]; rampMeshes=[];
+  for(const c of crates){ const m=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.9,0.9),
+      new THREE.MeshLambertMaterial({color:0xb5793a})); m.castShadow=true; m.receiveShadow=true;
+    m.position.set(c.x/CELL,0.46,c.y/CELL); scene.add(m); crateMeshes.push(m); }
+  for(const r of ramps){ const m=new THREE.Mesh(rampGeo(),
+      new THREE.MeshLambertMaterial({color:0x3f7d5a})); m.castShadow=true; m.receiveShadow=true;
+    m.position.set(r.x/CELL,0,r.y/CELL); m.rotation.y=r.rot*Math.PI/2; scene.add(m); rampMeshes.push(m); }
+}
+function initThree(){
+  const cv=document.getElementById('c3d');
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setClearColor(0x0a0d14,1);
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  scene=new THREE.Scene(); scene.fog=new THREE.Fog(0x0a0d14,40,110);
+  camera=new THREE.OrthographicCamera(-1,1,1,-1,0.1,300);
+  fitCamera();
+  scene.add(new THREE.AmbientLight(0x8090b0,0.75));
+  const dir=new THREE.DirectionalLight(0xfff2e0,0.95);
+  dir.position.set(COLS*0.7,46,ROWS*0.2); dir.castShadow=true;
+  dir.shadow.mapSize.set(1024,1024);
+  const sc=dir.shadow.camera; sc.left=-40;sc.right=40;sc.top=40;sc.bottom=-40;sc.near=1;sc.far=140;
+  scene.add(dir);
+  // floor
+  floorMesh=new THREE.Mesh(new THREE.PlaneGeometry(COLS,ROWS),
+    new THREE.MeshLambertMaterial({color:0x141a28}));
+  floorMesh.rotation.x=-Math.PI/2; floorMesh.position.set(COLS/2,0,ROWS/2);
+  floorMesh.receiveShadow=true; scene.add(floorMesh);
+  // grid lines
+  const gh=new THREE.GridHelper(Math.max(COLS,ROWS),Math.max(COLS,ROWS),0x223049,0x1a2438);
+  gh.position.set(COLS/2,0.02,ROWS/2); scene.add(gh);
+  agentLayer=new THREE.Group(); scene.add(agentLayer);
+  coneLayer=new THREE.Group(); scene.add(coneLayer);
+  buildWalls(); buildObstacles();
+  fpCam=new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.05, 200);
+  window.addEventListener('resize',()=>{ fitCamera();
+    fpCam.aspect=innerWidth/innerHeight; fpCam.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight); });
+  renderer.setSize(innerWidth,innerHeight);
+  cv.addEventListener('click',onPick);
+  // right-click toggles pointer lock; while locked, mouse looks around (yaw)
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('mousedown',e=>{ if(e.button===2 && human){ e.preventDefault();
+    if(document.pointerLockElement===cv) document.exitPointerLock(); else cv.requestPointerLock(); } });
+  document.addEventListener('mousemove',e=>{ if(human && document.pointerLockElement===cv){
+    human.facing+=e.movementX*0.0025; human.targetFacing=human.facing; } });
+}
+function fitCamera(){
+  const aspect=innerWidth/innerHeight, vH=40, vW=vH*aspect;
+  camera.left=-vW/2; camera.right=vW/2; camera.top=vH/2; camera.bottom=-vH/2;
+  camera.position.set(COLS/2+26,40,ROWS/2+30); camera.lookAt(COLS/2,0,ROWS/2);
+  camera.updateProjectionMatrix();
+}
+function buildWalls(){
+  if(wallMesh){ scene.remove(wallMesh); wallMesh.geometry.dispose(); }
+  const cells=[]; for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++) if(grid[y][x]===1) cells.push([x,y]);
+  const geo=new THREE.BoxGeometry(1,1.5,1);
+  const mat=new THREE.MeshLambertMaterial({color:0x2b3a55});
+  wallMesh=new THREE.InstancedMesh(geo,mat,cells.length);
+  wallMesh.castShadow=true; wallMesh.receiveShadow=true;
+  const m=new THREE.Matrix4();
+  cells.forEach((c,i)=>{ m.setPosition(c[0]+0.5,0.75,c[1]+0.5); wallMesh.setMatrixAt(i,m); });
+  scene.add(wallMesh);
+}
+function nameSprite(text,color){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const c=cv.getContext('2d'); c.font='bold 40px Segoe UI,sans-serif'; c.textAlign='center';
+  c.fillStyle='rgba(0,0,0,.55)'; c.fillRect(0,0,256,64);
+  c.fillStyle=color; c.fillText(text,128,46);
+  const tex=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false}));
+  sp.scale.set(4,1,1); return sp;
+}
+// pooled by stable bot id so meshes persist across rounds (no per-round GPU leak)
+let meshPool=new Map();
+function agentKey(ag){ return ag.human?('human:'+ag.role):(ag.role+':'+ag.name); }
+function disposeGroup(g){ g.traverse(o=>{ if(o.geometry)o.geometry.dispose();
+  if(o.material){ if(o.material.map)o.material.map.dispose(); o.material.dispose(); } }); }
+function makeAgentMesh(ag){
+  const col=ag.role==='hider'?0x5cffae:0xff6b8a;
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.36,0.42,1.05,16), new THREE.MeshLambertMaterial({color:col}));
+  body.position.y=0.55; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,12), new THREE.MeshLambertMaterial({color:col}));
+  head.position.y=1.25; head.castShadow=true; g.add(head);
+  if(ag.role==='seeker'){ const nose=new THREE.Mesh(new THREE.ConeGeometry(0.14,0.4,10),
+    new THREE.MeshLambertMaterial({color:0x1a0710})); nose.rotation.z=-Math.PI/2; nose.position.set(0.34,1.25,0); g.add(nose); }
+  if(ag.human){ const ring=new THREE.Mesh(new THREE.TorusGeometry(0.7,0.08,8,24),
+    new THREE.MeshBasicMaterial({color:0xffd76b})); ring.rotation.x=-Math.PI/2; ring.position.y=0.06; g.add(ring); }
+  const sp=nameSprite(ag.name, ag.human?'#ffd76b':(ag.role==='hider'?'#5cffae':'#ff6b8a')); sp.position.y=2.0; g.add(sp);
+  agentLayer.add(g);
+  const cone=new THREE.Mesh(new THREE.BufferGeometry(),   // seekers red & long; hiders dim-green & short
+    new THREE.MeshBasicMaterial({color: ag.role==='seeker'?0xff6b8a:0x5cffae,
+      transparent:true, opacity: ag.role==='seeker'?0.16:0.07, side:THREE.DoubleSide, depthWrite:false}));
+  coneLayer.add(cone);
+  return {group:g, body, head, cone, col};
+}
+function ensureAgentMeshes(){
+  const need=new Set();
+  for(const ag of [...hiders,...seekers]){ const k=agentKey(ag); need.add(k);
+    let e=meshPool.get(k); if(!e){ e=makeAgentMesh(ag); meshPool.set(k,e); }
+    ag.mesh=e.group; ag.cone=e.cone; ag._mc=e; }
+  for(const [k,e] of [...meshPool]) if(!need.has(k)){
+    disposeGroup(e.group); agentLayer.remove(e.group);
+    if(e.cone){ e.cone.geometry.dispose(); e.cone.material.dispose(); coneLayer.remove(e.cone); }
+    meshPool.delete(k);
+  }
+}
+function updateConeGeo(ag){
+  const sk=ag, rng=ag.role==='hider'?HIDER_SIGHT:SIGHT, rays=30, pts=[[sk.x/CELL,sk.y/CELL]];
+  for(let i=0;i<=rays;i++){
+    const a=sk.facing-HALF_FOV+(2*HALF_FOV)*(i/rays); let rr=rng;
+    const sN=Math.ceil(rng/(CELL*0.5));
+    for(let s=1;s<=sN;s++){ const dd=rng*s/sN; if(blockedSight(sk.x+Math.cos(a)*dd,sk.y+Math.sin(a)*dd)){rr=dd;break;} }
+    pts.push([(sk.x+Math.cos(a)*rr)/CELL,(sk.y+Math.sin(a)*rr)/CELL]);
+  }
+  const v=[]; for(let i=1;i<pts.length-1;i++){
+    v.push(pts[0][0],0.04,pts[0][1], pts[i][0],0.04,pts[i][1], pts[i+1][0],0.04,pts[i+1][1]); }
+  const g=ag.cone.geometry; g.setAttribute('position',new THREE.Float32BufferAttribute(v,3)); g.computeVertexNormals();
+}
+function render3D(){
+  for(let i=0;i<crateMeshes.length && i<crates.length;i++){
+    crateMeshes[i].position.x=crates[i].x/CELL; crateMeshes[i].position.z=crates[i].y/CELL; }
+  for(const ag of [...hiders,...seekers]){
+    if(!ag.mesh) continue;
+    ag.mesh.visible=ag.alive;
+    if(!ag.alive){ if(ag.cone) ag.cone.visible=false; continue; }
+    ag.mesh.position.set(ag.x/CELL,0,ag.y/CELL);
+    if(ag.role==='seeker'||ag.human){ ag.mesh.rotation.y=-ag.facing; }
+    if(ag.role==='hider' && ag._mc){ const seen=anySeekerSees(ag.x,ag.y);
+      const tgt=seen?0xfff06b:ag._mc.col;
+      ag._mc.body.material.color.setHex(tgt); ag._mc.head.material.color.setHex(tgt); }
+    if(ag.cone && showCones){ ag.cone.visible=true; updateConeGeo(ag); } else if(ag.cone) ag.cone.visible=false;
+  }
+  let cam=camera;
+  if(human && human.alive){
+    const hx=human.x/CELL, hz=human.y/CELL;
+    fpCam.position.set(hx,1.2,hz);
+    fpCam.lookAt(hx+Math.cos(human.facing),1.05,hz+Math.sin(human.facing));
+    if(human.mesh) human.mesh.visible=false;     // don't block your own first-person view
+    if(human.cone) human.cone.visible=false;
+    cam=fpCam;
+  }
+  renderer.render(scene,cam);
+}
+let showCones=true;
+function onPick(e){
+  const ndc=new THREE.Vector2((e.clientX/innerWidth)*2-1, -(e.clientY/innerHeight)*2+1);
+  const ray=new THREE.Raycaster(); ray.setFromCamera(ndc,camera);
+  let best=null,bd=1e9;
+  for(const ag of [...hiders,...seekers]){ if(!ag.alive||!ag.mesh)continue;
+    const p=new THREE.Vector3(ag.x/CELL,0.7,ag.y/CELL);
+    const d=ray.ray.distanceToPoint(p); if(d<1.0 && d<bd){bd=d;best=ag;} }
+  if(best && best.rec) selectBot(best.rec);
+}
+
+/* ============================================================
+   PERSISTENCE  (v3 — per-bot brains + names + stats)
+   ============================================================ */
+const KEY='aiHideSeek.v10'; let saveTimer=null;  // v10: smart INSTINCTS (hunt/search/flee/cover) + learning layer
+function saveSoon(){ if(saveTimer)return; saveTimer=setTimeout(saveNow,1500); }
+function recOut(r){ return {name:r.name,role:r.role,persona:r.persona,games:r.games,wins:r.wins,losses:r.losses,catches:r.catches}; }
+function saveNow(){ saveTimer=null;
+  try{ localStorage.setItem(KEY,JSON.stringify({
+    sharedH:sharedHB.serialize(), sharedS:sharedSB.serialize(),
+    rosterH:rosterH.map(recOut), rosterS:rosterS.map(recOut),
+    round, survHistory, techCounts, techDiscovered, techLines })); }catch(e){}
+}
+function recIn(o){ usedNames.add(o.name);
+  return {name:o.name,role:o.role,brain:o.role==='hider'?sharedHB:sharedSB,
+    persona:o.persona||makePersona(o.role==='hider'?9:10),
+    games:o.games||0,wins:o.wins||0,losses:o.losses||0,catches:o.catches||0}; }
+function loadSave(){
+  try{ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(!o) return false;
+    sharedHB.load(o.sharedH); sharedSB.load(o.sharedS);
+    rosterH=(o.rosterH||[]).map(recIn); rosterS=(o.rosterS||[]).map(recIn);
+    round=o.round||0; survHistory=o.survHistory||[];
+    techCounts=o.techCounts||{}; techDiscovered=o.techDiscovered||{}; techLines=o.techLines||[];
+    nHiders=Math.max(1,rosterH.length||4); nSeekers=Math.max(1,rosterS.length||2);
+    return true;
+  }catch(e){ return false; }
+}
+function resetAll(){
+  localStorage.removeItem(KEY); usedNames=new Set();
+  sharedHB.Q={}; sharedHB.states=0; sharedHB.temp=11;
+  sharedSB.Q={}; sharedSB.states=0; sharedSB.temp=11;
+  rosterH=[]; rosterS=[]; round=0; survHistory=[]; techCounts={}; techDiscovered={}; techLines=[];
+  ensureRoster(); renderTechSummary({}); startRound(); setupWarmup();
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+let selectedRec=null;
+function renderRoster(){
+  const el=document.getElementById('roster'); let h='';
+  for(const r of [...rosterH.slice(0,nHiders),...rosterS.slice(0,nSeekers)]){
+    const col=r.role==='hider'?'#5cffae':'#ff6b8a';
+    const rec = r.role==='hider'? `${r.wins}W/${r.losses}L` : `${r.catches} tags`;
+    h+=`<div class="bot ${selectedRec===r?'sel':''}" data-n="${r.name}"><span class="role" style="background:${col}"></span>`+
+       `<span class="nm">${r.name}</span><span class="rec">${rec} · ${r.brain.states}st</span></div>`;
+  }
+  el.innerHTML=h;
+  el.querySelectorAll('.bot').forEach(d=>d.onclick=()=>{
+    const all=[...rosterH,...rosterS]; selectBot(all.find(x=>x.name===d.dataset.n)); });
+}
+function selectBot(rec){ selectedRec=rec; renderRoster(); updateBrainPanel(); }
+const DIRNAMES_H=['→E','↘SE','↓S','↙SW','←W','↖NW','↑N','↗NE','·stay'];
+const DIRNAMES_S=['→E','↘SE','↓S','↙SW','←W','↖NW','↑N','↗NE','⟲scanL','⟳scanR'];
+function updateBrainPanel(){
+  if(!selectedRec){ return; }
+  const r=selectedRec; document.getElementById('brainWho').textContent=`(${r.name}, ${r.role})`;
+  const dirNames = r.role==='hider'?DIRNAMES_H:DIRNAMES_S;   // seeker has scanL/scanR, not 'stay'
+  // sample a representative state: a fresh state read for a live agent of this rec, else any stored
+  let s=null; const live=[...hiders,...seekers].find(a=>a.rec===r && a.alive);
+  if(live) s=(r.role==='hider'?hiderState(live):seekerState(live,tick));
+  else { const ks=Object.keys(r.brain.Q); s=ks.length?ks[0]:null; }
+  let body=`<div class="hint">Record: <b>${r.wins}</b> wins · <b>${r.losses}</b> losses · <b>${r.catches}</b> tags · team brain knows <b>${r.brain.states}</b> situations · variety ${r.brain.temp.toFixed(1)}</div>`;
+  if(s){ const q=r.brain.get(s), best=r.brain.bestAction(s), mx=Math.max(0.01,...q.map(Math.abs));
+    body+=`<div class="hint" style="margin:6px 0">Now reading <b style="color:var(--accent)">${s}</b> → best move <b style="color:var(--gold)">${dirNames[best]}</b></div>`;
+    for(let i=0;i<q.length;i++){ const w=Math.round(Math.abs(q[i])/mx*100), col=q[i]>=0?'#5cffae':'#ff6b8a';
+      body+=`<div class="row" style="margin:1px 0"><span>${dirNames[i]}${i===best?' ★':''}</span>`+
+        `<span style="display:flex;gap:6px;align-items:center"><span style="width:54px;height:6px;background:#0c1018;border-radius:3px;display:inline-block;overflow:hidden"><span style="display:block;height:100%;width:${w}%;background:${col}"></span></span>${q[i].toFixed(2)}</span></div>`; }
+  }
+  document.getElementById('brainBody').innerHTML=body;
+}
+function renderTechSummary(map){
+  map=map||{ghost:['Ghost'],juke:['Last-Second Juke'],wallHug:['Wall Hugger'],flush:['Flusher'],quickCatch:['Blitz Hunter'],scatter:['Scatter Split']};
+  let html=techLines.join(''); const known=Object.keys(techDiscovered);
+  if(known.length){ html+='<div style="margin-top:6px">';
+    for(const k of known) html+=`<span class="pill">${map[k][0]} ×${techCounts[k]||0}</span>`; html+='</div>'; }
+  if(!html) html='<div class="r">No tactics discovered yet…</div>';
+  document.getElementById('techlog').innerHTML=html;
+}
+function avg(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length:0; }
+const chart=document.getElementById('chart'), cctx=chart.getContext('2d');
+function drawChart(){
+  cctx.clearRect(0,0,chart.width,chart.height);
+  cctx.strokeStyle='#26324a'; for(let i=0;i<=4;i++){ const y=i/4*chart.height;
+    cctx.beginPath(); cctx.moveTo(0,y); cctx.lineTo(chart.width,y); cctx.stroke(); }
+  if(survHistory.length<2) return;
+  cctx.strokeStyle='#5cffae'; cctx.lineWidth=2; cctx.beginPath();
+  const n=survHistory.length; for(let i=0;i<n;i++){ const x=i/(n-1)*chart.width, y=chart.height-survHistory[i]*chart.height;
+    i?cctx.lineTo(x,y):cctx.moveTo(x,y); } cctx.stroke();
+}
+let hudT=0;
+function updateHUD(){
+  document.getElementById('sRound').textContent=round;
+  document.getElementById('sTime').textContent=Math.max(0,Math.ceil((ROUND_LEN-tick)/60))+'s';
+  document.getElementById('sHiders').textContent=hiders.filter(h=>h.alive).length+'/'+hiders.length;
+  const l30=survHistory.slice(-30); document.getElementById('mSurv').textContent=l30.length?Math.round(avg(l30)*100)+'%':'—';
+  if(hudT++%12===0){ drawChart(); renderRoster(); if(selectedRec) updateBrainPanel(); }
+}
+let toastT=0;
+function showToast(msg,color){ const t=document.getElementById('toast');
+  t.textContent=msg; t.style.color=color; t.style.display='block'; toastT=110; }
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+let speed=1, turbo=false, warmTarget=0;
+function setupWarmup(){ warmTarget=0; } // instincts are smart from frame one — no warmup needed
+function frame(){
+  if(warmTarget){ const w=document.getElementById('warm');
+    if(round>=warmTarget){ warmTarget=0; turbo=false; speed=1; setSpeed('b1'); if(w) w.style.display='none'; }
+    else if(w){ w.style.display='block'; w.textContent='🧠 Warming up the bots… '+(warmTarget-round)+' rounds left'; } }
+  if(!paused){ const n=turbo?260:speed; for(let i=0;i<n;i++) step(); }
+  if(has3D && (!turbo || round%3===0)) render3D();
+  updateHUD();
+  if(toastT>0 && --toastT===0) document.getElementById('toast').style.display='none';
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   WIRING + BOOT
+   ============================================================ */
+function setSpeed(id){ ['b1','b4','bTurbo','bPause'].forEach(b=>document.getElementById(b).classList.remove('on'));
+  document.getElementById(id).classList.add('on'); }
+document.getElementById('bPause').onclick=function(){ paused=!paused; this.textContent=paused?'▶':'⏸'; this.classList.toggle('on',paused); };
+document.getElementById('b1').onclick=()=>{ paused=false;turbo=false;speed=1;setSpeed('b1'); };
+document.getElementById('b4').onclick=()=>{ paused=false;turbo=false;speed=4;setSpeed('b4'); };
+document.getElementById('bTurbo').onclick=()=>{ paused=false;turbo=true;setSpeed('bTurbo'); };
+function joinAs(role){ leaveHuman(); humanRole=role;
+  document.getElementById('bLeave').style.display='';
+  document.getElementById('xhair').style.display='block';
+  const a=new Agent(role,null,true); (role==='hider'?hiders:seekers).push(a); human=a;
+  if(has3D) ensureAgentMeshes(); }
+function leaveHuman(){ humanRole=null; document.getElementById('bLeave').style.display='none';
+  document.getElementById('xhair').style.display='none';
+  if(document.pointerLockElement) document.exitPointerLock();
+  if(human){ const arr=human.role==='hider'?hiders:seekers; const i=arr.indexOf(human); if(i>=0)arr.splice(i,1); human=null; if(has3D)ensureAgentMeshes(); } }
+document.getElementById('bJoinH').onclick=()=>joinAs('hider');
+document.getElementById('bJoinS').onclick=()=>joinAs('seeker');
+document.getElementById('bLeave').onclick=leaveHuman;
+document.getElementById('hPlus').onclick=()=>{ if(nHiders<8){nHiders++; ensureRoster(); document.getElementById('nHid').textContent=nHiders; startRound();} };
+document.getElementById('hMinus').onclick=()=>{ if(nHiders>1){nHiders--; document.getElementById('nHid').textContent=nHiders; startRound();} };
+document.getElementById('sPlus').onclick=()=>{ if(nSeekers<5){nSeekers++; ensureRoster(); document.getElementById('nSee').textContent=nSeekers; startRound();} };
+document.getElementById('sMinus').onclick=()=>{ if(nSeekers>1){nSeekers--; document.getElementById('nSee').textContent=nSeekers; startRound();} };
+document.getElementById('bSave').onclick=()=>{ saveNow(); const b=document.getElementById('bSave'); b.textContent='✓ Saved'; setTimeout(()=>b.textContent='💾 Save',900); };
+document.getElementById('bReset').onclick=()=>{ if(confirm('Erase ALL bots, names and learning?')) resetAll(); };
+document.getElementById('bNewMap').onclick=()=>{ genMap(); if(has3D){ buildWalls(); buildObstacles(); } startRound(); };
+
+function boot(){
+  if(!has3D){ document.getElementById('err').style.display='flex'; }
+  genMap(); loadSave(); ensureRoster();
+  document.getElementById('nHid').textContent=nHiders;
+  document.getElementById('nSee').textContent=nSeekers;
+  if(has3D) initThree();
+  renderTechSummary(); startRound();
+  setupWarmup();
+  if(has3D) frame(); else loopHeadless();
+}
+function loopHeadless(){ /* headless harness drives step() itself */ }
+boot();
+
+/* expose for headless harness */
+if(typeof globalThis!=='undefined') globalThis.__SIM={
+  get step(){return step;}, get round(){return round;}, get survHistory(){return survHistory;},
+  rosterH(){return rosterH;}, rosterS(){return rosterS;},
+  get hiders(){return hiders;}, get seekers(){return seekers;}, get tick(){return tick;},
+  activeHiderBrains(){return rosterH.slice(0,nHiders).map(r=>r.brain);},
+  activeSeekerBrains(){return rosterS.slice(0,nSeekers).map(r=>r.brain);},
+  setCounts(h,s){ nHiders=h; nSeekers=s; ensureRoster(); startRound(); },
+};
+</script>
+</body>
+</html>
