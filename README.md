@@ -2,7 +2,7 @@
 
 A 3D browser game where you watch AI bots play hide-and-seek — or jump in and play yourself.
 
-**▶ Play it:** _(GitHub Pages link will go here once Pages is enabled)_
+**▶ Play it:** https://elischwerzler.github.io/ai-hide-and-seek/
 
 Single self-contained HTML file. No build step, no install — just open it.
 
